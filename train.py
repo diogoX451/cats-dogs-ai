@@ -59,8 +59,13 @@ EPOCHS = 50            # mais epochs: GAP + weight decay resistem a overfitting 
 LR = 1e-3
 WEIGHT_DECAY = 1e-4    # L2 regularização
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-DATA_DIR = Path("dataset")
 MODEL_PATH = Path("cats_dogs_scratch.pth")
+
+# Kaggle: PetImages/Cat + PetImages/Dog sem split
+# Local:  dataset/train/cats + dataset/val/cats (já splitado)
+KAGGLE_DATA = Path("/kaggle/input/cats-and-dogs-classification-dataset/PetImages")
+LOCAL_DATA  = Path("dataset")
+ON_KAGGLE   = KAGGLE_DATA.exists()
 
 
 # ─── Data Augmentation ────────────────────────────────────────────────────────
@@ -200,11 +205,25 @@ def evaluate(
 # ─── Main ─────────────────────────────────────────────────────────────────────
 def main() -> None:
     print(f"Dispositivo: {DEVICE}")
+    print(f"Ambiente: {'Kaggle' if ON_KAGGLE else 'Local'}")
 
-    train_dataset = datasets.ImageFolder(DATA_DIR / "train", transform=train_transforms)
-    val_dataset = datasets.ImageFolder(DATA_DIR / "val", transform=val_transforms)
+    if ON_KAGGLE:
+        from torch.utils.data import Subset
+        # Dois ImageFolder com transforms diferentes, índices não-sobrepostos
+        train_base = datasets.ImageFolder(str(KAGGLE_DATA), transform=train_transforms)
+        val_base   = datasets.ImageFolder(str(KAGGLE_DATA), transform=val_transforms)
+        n = len(train_base)
+        val_size = int(0.2 * n)
+        torch.manual_seed(42)
+        idx = torch.randperm(n).tolist()
+        train_dataset: datasets.ImageFolder | Subset = Subset(train_base, idx[val_size:])
+        val_dataset:   datasets.ImageFolder | Subset = Subset(val_base,   idx[:val_size])
+        print(f"Classes: {train_base.classes}")
+    else:
+        train_dataset = datasets.ImageFolder(str(LOCAL_DATA / "train"), transform=train_transforms)
+        val_dataset   = datasets.ImageFolder(str(LOCAL_DATA / "val"),   transform=val_transforms)
+        print(f"Classes: {train_dataset.classes}")
 
-    print(f"Classes: {train_dataset.classes}")
     print(f"Treino: {len(train_dataset)}  Val: {len(val_dataset)}")
 
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, pin_memory=True)
